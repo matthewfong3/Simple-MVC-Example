@@ -4,14 +4,24 @@ const models = require('../models');
 // get the Cat model
 const Cat = models.Cat.CatModel;
 
+const Dog = models.Dog.DogModel;
+
 // default fake data so that we have something to work with until we make a real Cat
 const defaultData = {
   name: 'unknown',
   bedsOwned: 0,
 };
 
+const defaultDogData = {
+  name: 'unknown',
+  breed: 'unknown',
+  age: 0,
+};
+
 // object for us to keep track of the last Cat we made and dynamically update it sometimes
 let lastAdded = new Cat(defaultData);
+
+let lastDogAdded = new Dog(defaultDogData);
 
 // function to handle requests to the main page
 // controller functions in Express receive the full HTTP request
@@ -68,6 +78,21 @@ const readCat = (req, res) => {
   Cat.findByName(name1, callback);
 };
 
+const readAllDogs = (req, res, callback) => {
+  Dog.find(callback);
+};
+
+const readDog = (req, res) => {
+  const name1 = req.query.name;
+
+  const callback = (err, doc) => {
+    if (err) return res.json({ err });
+    return res.json(doc);
+  };
+
+  Dog.findNyName(name1, callback);
+};
+
 // function to handle requests to the page1 page
 // controller functions in Express receive the full HTTP request
 // and a pre-filled out response object to send
@@ -112,6 +137,16 @@ const hostPage3 = (req, res) => {
   res.render('page3');
 };
 
+const hostPage4 = (req, res) => {
+  const callback = (err, docs) => {
+    if (err) return res.json({ err }); // if error, return it
+    // return success
+    return res.render('page4', { dogs: docs });
+  };
+
+  readAllDogs(req, res, callback);
+};
+
 // function to handle get request to send the name
 // controller functions in Express receive the full HTTP request
 // and a pre-filled out response object to send
@@ -122,46 +157,75 @@ const getName = (req, res) => {
   res.json({ name: lastAdded.name });
 };
 
+const getDogName = (req, res) => {
+  res.json({ name: lastDogAdded.name });
+};
+
 // function to handle a request to set the name
 // controller functions in Express receive the full HTTP request
 // and get a pre-filled out response object to send
 // ADDITIONALLY, with body-parser we will get the
 // body/form/POST data in the request as req.body
 const setName = (req, res) => {
-  // check if the required fields exist
-  // normally you would also perform validation
-  // to know if the data they sent you was real
-  if (!req.body.firstname || !req.body.lastname || !req.body.beds) {
-    // if not respond with a 400 error
-    // (either through json or a web page depending on the client dev)
-    return res.status(400).json({ error: 'firstname,lastname and beds are all required' });
+  if (req.body.beds !== undefined) {
+    // check if the required fields exist
+    // normally you would also perform validation
+    // to know if the data they sent you was real
+    if (!req.body.firstname || !req.body.lastname || !req.body.beds) {
+      // if not respond with a 400 error
+      // (either through json or a web page depending on the client dev)
+      return res.status(400).json({ error: 'firstname,lastname and beds are all required' });
+    }
+
+    // if required fields are good, then set name
+    const name = `${req.body.firstname} ${req.body.lastname}`;
+
+    // dummy JSON to insert into database
+    const catData = {
+      name,
+      bedsOwned: req.body.beds,
+    };
+
+    // create a new object of CatModel with the object to save
+    const newCat = new Cat(catData);
+
+    // create new save promise for the database
+    const savePromise = newCat.save();
+
+    savePromise.then(() => {
+      // set the lastAdded cat to our newest cat object.
+      // This way we can update it dynamically
+      lastAdded = newCat;
+      // return success
+      res.json({ name: lastAdded.name, beds: lastAdded.bedsOwned });
+    });
+
+    // if error, return it
+    savePromise.catch(err => res.json({ err }));
+
+    return res;
+  }
+  // handle Dog case
+  if (!req.body.name || !req.body.breed || !req.body.age) {
+    return res.status(400).json({ error: 'name, breed, and age are all required' });
   }
 
-  // if required fields are good, then set name
-  const name = `${req.body.firstname} ${req.body.lastname}`;
-
-  // dummy JSON to insert into database
-  const catData = {
-    name,
-    bedsOwned: req.body.beds,
+  const dogData = {
+    name: req.body.name,
+    breed: req.body.breed,
+    age: req.body.age,
   };
 
-  // create a new object of CatModel with the object to save
-  const newCat = new Cat(catData);
-
-  // create new save promise for the database
-  const savePromise = newCat.save();
+  const newDog = new Dog(dogData);
+  // newDog.isNew = false;
+  const savePromise = newDog.save();
 
   savePromise.then(() => {
-    // set the lastAdded cat to our newest cat object.
-    // This way we can update it dynamically
-    lastAdded = newCat;
-    // return success
-    res.json({ name: lastAdded.name, beds: lastAdded.bedsOwned });
+    lastDogAdded = newDog;
+    res.json({ name: lastDogAdded.name, breed: lastDogAdded.breed, age: lastDogAdded.age });
   });
 
-  // if error, return it
-  savePromise.catch((err) => res.json({ err }));
+  savePromise.catch(err => res.json({ err }));
 
   return res;
 };
@@ -229,7 +293,31 @@ const updateLast = (req, res) => {
   savePromise.then(() => res.json({ name: lastAdded.name, beds: lastAdded.bedsOwned }));
 
   // if save error, just return an error for now
-  savePromise.catch((err) => res.json({ err }));
+  savePromise.catch(err => res.json({ err }));
+};
+
+const searchDogName = (req, res) => {
+  if (!req.query.name) {
+    return res.json({ error: 'Name is requierd to perform a search' });
+  }
+
+  return Dog.findByName(req.query.name, (err, doc) => {
+    if (err) return res.json({ err });
+    if (!doc) return res.json({ error: 'No dogs found' });
+
+    const tempDogData = doc;
+    tempDogData.age++;
+
+    const savePromise = doc.save();
+
+    savePromise.then(() => {
+      res.json({ name: doc.name, breed: doc.breed, age: tempDogData.age });
+    });
+
+    savePromise.catch(error => res.json({ error }));
+
+    return res;
+  });
 };
 
 // function to handle a request to any non-real resources (404)
@@ -253,10 +341,14 @@ module.exports = {
   page1: hostPage1,
   page2: hostPage2,
   page3: hostPage3,
+  page4: hostPage4,
   readCat,
+  readDog,
   getName,
+  getDogName,
   setName,
   updateLast,
   searchName,
+  searchDogName,
   notFound,
 };

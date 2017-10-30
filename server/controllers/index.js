@@ -308,7 +308,7 @@ const searchDogName = (req, res) => {
     const tempDogData = doc;
     tempDogData.age++;
 
-    const savePromise = doc.save();
+    const savePromise = tempDogData.save();
 
     savePromise.then(() => {
       res.json({ name: doc.name, breed: doc.breed, age: tempDogData.age });
